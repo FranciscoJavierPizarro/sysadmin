@@ -1,6 +1,6 @@
 # sysadmin
 
-Este repositorio contiene los distintos trabajos ,desarrollados durante la carrera, relativos a la adminitración de sistemas.
+Este repositorio contiene los distintos trabajos ,desarrollados durante la carrera, relativos a la administración de sistemas.
 
 Por un lado en la carpeta de System Administration se encuentra el trabajo final de la asignatura de Administración de sistemas I.
 
@@ -21,3 +21,5 @@ Los aspectos trabajados son:
 - Provisionamiento de alto nivel
 
 - Kubernetes
+
+- Manejo del SO OpenBSD
