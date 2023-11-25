@@ -1,0 +1,116 @@
+#boxes
+U = 'ubuntu/bionic64'
+#U = 'generic/ubuntu1804'
+#U = 'generic/ubuntu2004'
+#D = 'debian/buster64'
+#U = 'generic/ubuntu2204'
+
+# @ IP Master = 192.168.1.W9
+# @ IP worker w1 = 192.168.1.W1
+# ... etc
+# Valor ejemplo atribuido a alumnos al principio de asignatura, W = E (14)
+
+MASTER = '192.168.0.49'
+HAMASTER = '192.168.0.50'
+NODES = [
+  { hostname: 'm', type: "master", ip: MASTER, mem: 1800, m: MASTER },
+  { hostname: 'm2', type: "masterReplica", ip: '192.168.0.48', mem: 1800, m: MASTER },
+  { hostname: 'm3', type: "masterReplica", ip: '192.168.0.47', mem: 1800, m: MASTER },
+  { hostname: 'w1', type: "worker", ip: '192.168.0.41', mem: 1800, m: MASTER },
+  { hostname: 'w2', type: "worker", ip: '192.168.0.42', mem: 1800, m: MASTER },
+  { hostname: 'w3', type: "worker", ip: '192.168.0.43', mem: 1800, m: MASTER },
+]
+
+Vagrant.configure("2") do |config|
+    NODES.each do |node|
+        config.vm.define node[:hostname] do |nodeconfig|
+            nodeconfig.vm.box = U
+            #nodeconfig.vm.name = node[:hostname]
+            nodeconfig.vm.hostname = node[:hostname]
+            # Additional Network
+            nodeconfig.vm.network   :public_network,
+                                    # substituir por vuestra interfaz de red
+                                    bridge: "eth0",
+                                    ip: node[:ip],
+                                    nic_type: "virtio"
+                                    #:dev => "br1",
+                                    #:mode => "bridge",
+                                    #:type => "bridge"
+            # Virtual hardware configuration
+            nodeconfig.vm.provider :virtualbox do |v|
+                v.memory = node[:mem]
+                v.cpus = 1
+				#v.customize ["modifyvm",:id,"--memory",node[:mem],"--cpus","1"]
+                v.default_nic_type = "virtio"
+                #v.linked_clone = true
+                
+                v.customize ["modifyvm", :id, "--name", node[:hostname]]
+
+                if node[:type] == "worker"
+                  v.customize [ "createmedium",
+                  "--filename", "disk-#{node[:hostname]}.vdi",
+                  "--size", 30*1024 ] # Que tamaÃ±o es este ??
+                  v.customize [ "storageattach", :id,
+                  "--storagectl", "SCSI",
+                  "--port", 2, "--device", 0,"--type", "hdd",
+                  "--medium", "disk-#{node[:hostname]}.vdi" ]
+                end
+
+            end
+=begin
+
+            config.vm.provider :libvirt do |lib|
+              lib.uri = "qemu+ssh://a821259@155.210.154.206/system"
+              lib.username = "a821259"
+              lib.memory = node[:mem]
+              lib.nic_model_type = "virtio"
+              lib.driver = "kvm"
+              lib.cpus = 1
+              lib.keymap = 'es'
+              #lib.storage_pool :default do |pool|
+              #  pool.path = "/misc/alumnos/as2/as22022/a821259/remote/"
+              #end
+              lib.storage_pool_name = "a821259remote"
+            end
+            
+            nodeconfig.vm.synced_folder ".", "/vagrant", type: "rsync"
+=end
+
+
+
+            nodeconfig.vm.boot_timeout = 600
+            nodeconfig.vm.provision "shell", path: "./puppet.sh"
+            if node[:type] == "master" ||  node[:type] == "masterReplica"
+              nodeconfig.vm.provision "shell", path: "./pacemaker.sh"
+            end
+
+            #config.vm.provision "shell", inline: <<-SHELL
+            #  sudo apt-get update
+            #  sudo apt-get install -y puppet  
+              #sudo puppet module install puppetlabs-concat
+              #cp -r /etc/puppet/code/modules/* /usr/share/puppet/modules
+            #SHELL
+            #nodeconfig.vm.provision "shell", 
+            #    path: 'provision.sh', 
+            #    args: [ node[:hostname], node[:ip], node[:m], node[:type] ]
+            nodeconfig.vm.provision "puppet" do |puppet|
+              puppet.options = "--verbose --logdest /var/log/puppet.log"
+              puppet.facter         = {
+                "hostname"  => node[:hostname],
+                "nodeip"    => node[:ip],
+                "masterip"  => node[:m],
+                "nodetype"  => node[:type]
+              }
+              puppet.manifests_path = "./manifests/"
+              puppet.manifest_file = "vagrant_vm.pp"
+            end
+            
+            if node[:type] == "master"
+              nodeconfig.trigger.after :up do |trigger|
+                trigger.run = \
+                        {inline: "sh -c 'cp k3s.yaml /home/fjpizarro/.kube/config'"}
+              end
+            end
+        end
+    end
+end

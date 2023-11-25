@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coredns
+  namespace: kube-system
+  labels:
+    k8s-app: kube-dns
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+  template:
+    metadata:
+      labels:
+        k8s-app: kube-dns
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: k8s-app
+                    operator: In
+                    values:
+                      - kube-dns
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: coredns
+          image: coredns/coredns:1.8.4
+          args: ["-conf", "/etc/coredns/Corefile"]
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/coredns
+              readOnly: true
+      volumes:
+        - name: config-volume
+          configMap:
+            name: coredns
+            items:
+              - key: Corefile
+                path: Corefile
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    k8s-app: kube-dns
+spec:
+  selector:
+    k8s-app: kube-dns
+  clusterIP: 10.43.0.99
+  ports:
+    - name: dns
+      port: 53
+      protocol: UDP

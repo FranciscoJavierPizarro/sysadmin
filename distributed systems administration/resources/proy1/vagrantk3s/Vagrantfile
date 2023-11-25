@@ -1,0 +1,66 @@
+#boxes
+Ubu = 'ubuntu/bionic64'
+#Deb = 'debian/buster64'
+
+# @ IP Master = 192.168.1.W9
+# @ IP worker w1 = 192.168.1.W1
+# ... etc
+# Valor ejemplo atribuido a alumnos al principio de asignatura, W = E (14)
+
+# Definimos las ips,nombres,roles
+MASTER = '192.168.1.49'
+NODES = [
+  { hostname: 'm', type: "master", ip: MASTER, mem: 1000, m: MASTER },
+  { hostname: 'w1', type: "worker", ip: '192.168.1.41', mem: 1800, m: MASTER },
+  { hostname: 'w2', type: "worker", ip: '192.168.1.42', mem: 1800, m: MASTER },
+  { hostname: 'w3', type: "worker", ip: '192.168.1.43', mem: 1800, m: MASTER },
+]
+
+# Configuramos cada uno de los nodos
+Vagrant.configure("2") do |config|
+    NODES.each do |node|
+        config.vm.define node[:hostname] do |nodeconfig|
+            # Configuramos los nombres de las MVs, sus redes, los valores de RAM y CPU
+            # el tiempo máximo de boot, el shell empleado,
+            nodeconfig.vm.box = Ubu
+            nodeconfig.vm.hostname = node[:hostname]
+            
+
+            nodeconfig.vm.network :public_network,
+                    bridge: "wlo1",
+                    ip: node[:ip],
+                    # virtualbox__intnet: true,
+                    nic_type: "virtio"
+            
+            nodeconfig.vm.provider "virtualbox" do |v|
+                v.customize ["modifyvm",:id,"--memory",node[:mem],"--cpus","1"]
+                v.default_nic_type = "virtio"
+
+                if node[:type] == "worker"
+                    v.customize [ "createmedium",
+                        "--filename", "disk-#{node[:hostname]}.vdi",
+                        "--size", 30*1024 ] # Que tamaño es este ??
+                    v.customize [ "storageattach", :id,
+                        "--storagectl", "SCSI",
+                        "--port", 2, "--device", 0,"--type", "hdd",
+                        "--medium", "disk-#{node[:hostname]}.vdi" ]
+                end
+
+            end
+                
+            nodeconfig.vm.boot_timeout = 400
+            
+            nodeconfig.vm.provision "shell", 
+                path: 'provision.sh', 
+                args: [ node[:hostname], node[:ip], node[:m], node[:type] ]
+            
+            # No hace caso al if ?
+            if node[:type] == "master"
+              nodeconfig.trigger.after :up do |trigger|
+                trigger.run = \
+                        {inline: "sh -c 'cp k3s.yaml /home/a821259/.kube/config'"}
+              end
+            end
+        end
+    end
+end

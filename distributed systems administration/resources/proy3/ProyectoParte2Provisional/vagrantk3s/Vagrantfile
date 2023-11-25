@@ -1,0 +1,75 @@
+#boxes
+U = 'ubuntu/bionic64'
+#U = 'generic/ubuntu1804'
+#U = 'generic/ubuntu2004'
+#D = 'debian/buster64'
+#U = 'generic/ubuntu2204'
+
+# @ IP Master = 192.168.1.W9
+# @ IP worker w1 = 192.168.1.W1
+# ... etc
+# Valor ejemplo atribuido a alumnos al principio de asignatura, W = E (14)
+
+MASTER = '192.168.1.169'
+NODES = [
+  { hostname: 'm', type: "master", ip: MASTER, mem: 1000, m: MASTER },
+  { hostname: 'w1', type: "worker", ip: '192.168.1.161', mem: 1800, m: MASTER },
+  { hostname: 'w2', type: "worker", ip: '192.168.1.162', mem: 1800, m: MASTER },
+  { hostname: 'w3', type: "worker", ip: '192.168.1.163', mem: 1800, m: MASTER },
+]
+
+Vagrant.configure("2") do |config|
+    NODES.each do |node|
+        config.vm.define node[:hostname] do |nodeconfig|
+            nodeconfig.vm.box = U
+            nodeconfig.vm.hostname = node[:hostname]
+            
+
+            # Additional Network
+            nodeconfig.vm.network   :public_network,
+                                    # substituir por vuestra interfaz de red
+                                    bridge: "wlp0s20f3",
+                                    ip: node[:ip],
+                                    nic_type: "virtio"
+
+            # Virtual hardware configuration
+            nodeconfig.vm.provider "virtualbox" do |v|
+                v.memory = node[:mem]
+                v.cpus = 1
+                #v.customize ["modifyvm",:id,"--memory",node[:mem],"--cpus","1"]
+                v.default_nic_type = "virtio"
+                #v.linked_clone = true
+                
+                v.customize ["modifyvm", :id, "--name", node[:hostname]]
+
+=begin
+                # cREATE DISK
+                   v.customize [ "createmedium",
+                                 "--filename", "disk-#{nm]}.vdi",
+                                 "--size", 30*1024 ]
+
+                   v.customize [ "storageattach", :id, 
+                                  "--storagectl", "SCSI",
+                                  "--port", 2, "--device", 0,"--type", "hdd",
+                                  "--medium", "disk-#{nm}.vdi" ]
+                end
+=end
+
+            end
+                
+            nodeconfig.vm.boot_timeout = 600
+            
+            nodeconfig.vm.provision "shell", 
+                path: 'provision.sh', 
+                args: [ node[:hostname], node[:ip], node[:m], node[:type] ]
+            
+            
+            if node[:type] == "master"
+              nodeconfig.trigger.after :up do |trigger|
+                trigger.run = \
+                        {inline: "sh -c 'cp k3s.yaml /home/unai/.kube/config'"}
+              end
+            end
+        end
+    end
+end
